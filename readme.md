@@ -26,19 +26,19 @@ A command-line tool to analyze TLS encryption algorithms and post-quantum crypto
 ### Using Go (Recommended)
 
 ```bash
-go install github.com/yourusername/tlsinfo@latest
+go install github.com/Surya8j/tlsinfo@latest
 ```
 
 ### Pre-built Binaries
 
-Download the latest release from [GitHub Releases](https://github.com/yourusername/tlsinfo/releases):
+Download the latest release from [GitHub Releases](https://github.com/Surya8j/tlsinfo/releases):
 
 ```bash
 # Linux/macOS
 curl -sSL https://install.tlsinfo.dev | bash
 
 # Or download manually
-wget https://github.com/yourusername/tlsinfo/releases/latest/download/tlsinfo-linux-amd64.tar.gz
+wget https://github.com/Surya8j/tlsinfo/releases/latest/download/tlsinfo-linux-amd64.tar.gz
 tar -xzf tlsinfo-linux-amd64.tar.gz
 sudo mv tlsinfo /usr/local/bin/
 ```
@@ -244,7 +244,7 @@ Examples:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/tlsinfo.git
+git clone https://github.com/Surya8j/tlsinfo.git
 cd tlsinfo
 
 # Install dependencies
@@ -303,9 +303,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-- 📖 [Documentation](https://github.com/yourusername/tlsinfo/wiki)
-- 🐛 [Report Issues](https://github.com/yourusername/tlsinfo/issues)
-- 💬 [Discussions](https://github.com/yourusername/tlsinfo/discussions)
+- 📖 [Documentation](https://github.com/Surya8j/tlsinfo/wiki)
+- 🐛 [Report Issues](https://github.com/Surya8j/tlsinfo/issues)
+- 💬 [Discussions](https://github.com/Surya8j/tlsinfo/discussions)
 - 📧 [Email](mailto:support@tlsinfo.dev)
 
 ## Roadmap
