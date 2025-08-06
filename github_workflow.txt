@@ -1,0 +1,232 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Run tests
+      run: go test -v ./...
+    
+    - name: Run linter
+      uses: golangci/golangci-lint-action@v3
+      with:
+        version: latest
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: linux-amd64
+          - goos: linux
+            goarch: arm64
+            suffix: linux-arm64
+          - goos: darwin
+            goarch: amd64
+            suffix: darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            suffix: darwin-arm64
+          - goos: windows
+            goarch: amd64
+            suffix: windows-amd64
+            extension: .exe
+          - goos: freebsd
+            goarch: amd64
+            suffix: freebsd-amd64
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Get version
+      id: version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+    
+    - name: Build binary
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        CGO_ENABLED: 0
+      run: |
+        mkdir -p dist
+        go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.VERSION }}" \
+          -o dist/tlsinfo-${{ matrix.suffix }}${{ matrix.extension }} .
+    
+    - name: Create archive (Unix)
+      if: matrix.goos != 'windows'
+      run: |
+        cd dist
+        tar -czf tlsinfo-${{ steps.version.outputs.VERSION }}-${{ matrix.suffix }}.tar.gz \
+          tlsinfo-${{ matrix.suffix }}
+    
+    - name: Create archive (Windows)
+      if: matrix.goos == 'windows'
+      run: |
+        cd dist
+        zip tlsinfo-${{ steps.version.outputs.VERSION }}-${{ matrix.suffix }}.zip \
+          tlsinfo-${{ matrix.suffix }}${{ matrix.extension }}
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: tlsinfo-${{ matrix.suffix }}
+        path: dist/tlsinfo-${{ steps.version.outputs.VERSION }}-${{ matrix.suffix }}.*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: dist
+        merge-multiple: true
+    
+    - name: Generate changelog
+      id: changelog
+      run: |
+        if [ "${{ github.ref }}" != "$(git describe --tags --abbrev=0 HEAD^)" ]; then
+          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+          git log --pretty=format:"- %s (%h)" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        else
+          echo "CHANGELOG=Initial release" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        body: |
+          ## What's Changed
+          
+          ${{ steps.changelog.outputs.CHANGELOG }}
+          
+          ## Installation
+          
+          ### Using Go
+          ```bash
+          go install github.com/${{ github.repository }}@${{ github.ref_name }}
+          ```
+          
+          ### Download Binary
+          Choose the appropriate binary for your system:
+          - **Linux (x64)**: `tlsinfo-${{ github.ref_name }}-linux-amd64.tar.gz`
+          - **Linux (ARM64)**: `tlsinfo-${{ github.ref_name }}-linux-arm64.tar.gz` 
+          - **macOS (Intel)**: `tlsinfo-${{ github.ref_name }}-darwin-amd64.tar.gz`
+          - **macOS (Apple Silicon)**: `tlsinfo-${{ github.ref_name }}-darwin-arm64.tar.gz`
+          - **Windows**: `tlsinfo-${{ github.ref_name }}-windows-amd64.zip`
+          - **FreeBSD**: `tlsinfo-${{ github.ref_name }}-freebsd-amd64.tar.gz`
+          
+          ### Quick Install Script
+          ```bash
+          curl -sSL https://install.tlsinfo.dev | bash
+          ```
+          
+          ## Usage
+          ```bash
+          # Basic usage
+          tlsinfo example.com
+          
+          # Post-quantum analysis
+          tlsinfo github.com --pq-only
+          
+          # Multiple sites
+          tlsinfo github.com google.com cloudflare.com
+          ```
+          
+          ## Verification
+          
+          All binaries are signed and can be verified using:
+          ```bash
+          # Download and verify checksum
+          curl -sSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/checksums.txt
+          ```
+        files: dist/*
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+        
+    - name: Generate checksums
+      run: |
+        cd dist
+        sha256sum * > checksums.txt
+        
+    - name: Upload checksums
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/checksums.txt
+
+  docker:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+    
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: |
+          ${{ secrets.DOCKERHUB_USERNAME }}/tlsinfo
+          ghcr.io/${{ github.repository }}
+        tags: |
+          type=ref,event=tag
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
